@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Factures Immo</title>
+<meta name="theme-color" content="#22303C">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{
+  --papier:#F6F4EF; --carte:#FFFFFF; --encre:#22303C; --encre2:#5B6B78;
+  --ligne:#E3DFD6; --primaire:#2F5D50; --primaire-f:#264B41;
+  --debit:#A8402E; --recette:#2F6E4F; --accent-doux:#EDE9DF;
+  --radius:14px; --ombre:0 1px 3px rgba(34,48,60,.10);
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{margin:0; padding:0; background:var(--papier); color:var(--encre);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:16px; overscroll-behavior-y:contain;}
+header.app{position:sticky; top:0; z-index:20; background:var(--encre); color:#F6F4EF;
+  padding:calc(env(safe-area-inset-top) + 12px) 16px 12px; display:flex; align-items:baseline; gap:10px;}
+header.app h1{font-size:18px; margin:0; font-weight:700; letter-spacing:.3px;}
+header.app .sous{font-size:12px; opacity:.7;}
+main{padding:14px 14px 90px; max-width:640px; margin:0 auto;}
+.vue{display:none;}
+.vue.active{display:block; animation:fade .15s ease;}
+@keyframes fade{from{opacity:.4}to{opacity:1}}
+
+/* Nav basse */
+nav.basse{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(--carte);
+  border-top:1px solid var(--ligne); display:flex;
+  padding-bottom:env(safe-area-inset-bottom);}
+nav.basse button{flex:1; background:none; border:none; padding:8px 2px 6px; font-size:10.5px;
+  color:var(--encre2); display:flex; flex-direction:column; align-items:center; gap:2px; cursor:pointer; font-family:inherit;}
+nav.basse button .ico{font-size:21px; line-height:1;}
+nav.basse button.actif{color:var(--primaire); font-weight:700;}
+
+/* Cartes & formulaires */
+.carte{background:var(--carte); border:1px solid var(--ligne); border-radius:var(--radius);
+  box-shadow:var(--ombre); padding:14px; margin-bottom:12px;}
+label.champ{display:block; font-size:12.5px; font-weight:600; color:var(--encre2); margin:12px 0 4px; text-transform:uppercase; letter-spacing:.4px;}
+input,select,textarea{width:100%; padding:11px 12px; border:1px solid var(--ligne); border-radius:10px;
+  font-size:16px; font-family:inherit; background:#FDFCFA; color:var(--encre);}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--primaire); outline-offset:0; border-color:var(--primaire);}
+input[type=number]{font-variant-numeric:tabular-nums;}
+.rangee{display:flex; gap:10px;}
+.rangee>*{flex:1; min-width:0;}
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:8px; border:none; border-radius:12px;
+  padding:13px 16px; font-size:15.5px; font-weight:700; font-family:inherit; cursor:pointer; width:100%;}
+.btn.principal{background:var(--primaire); color:#fff;}
+.btn.principal:active{background:var(--primaire-f);}
+.btn.second{background:var(--accent-doux); color:var(--encre);}
+.btn.danger{background:#FBEFEC; color:var(--debit);}
+.btn.mini{width:auto; padding:8px 12px; font-size:13.5px; border-radius:9px;}
+.btn:disabled{opacity:.45;}
+
+/* Segmenté type */
+.seg{display:flex; background:var(--accent-doux); border-radius:11px; padding:3px; margin-bottom:4px;}
+.seg button{flex:1; border:none; background:none; padding:10px 6px; border-radius:9px; font-size:14.5px;
+  font-weight:600; color:var(--encre2); font-family:inherit; cursor:pointer;}
+.seg button.actif{background:var(--carte); color:var(--encre); box-shadow:var(--ombre);}
+
+/* Photos */
+.photos-grille{display:grid; grid-template-columns:repeat(auto-fill,minmax(86px,1fr)); gap:8px; margin-top:8px;}
+.photos-grille .vignette{position:relative; aspect-ratio:3/4; border-radius:10px; overflow:hidden;
+  border:1px solid var(--ligne); background:#EEE;}
+.photos-grille .vignette img{width:100%; height:100%; object-fit:cover;}
+.photos-grille .vignette .num{position:absolute; top:4px; left:4px; background:rgba(34,48,60,.8); color:#fff;
+  font-size:11px; font-weight:700; padding:1px 6px; border-radius:8px;}
+.ajout-photo{aspect-ratio:3/4; border:2px dashed var(--primaire); border-radius:10px; background:none;
+  color:var(--primaire); font-size:12px; font-weight:700; display:flex; flex-direction:column; gap:4px;
+  align-items:center; justify-content:center; cursor:pointer; font-family:inherit;}
+.ajout-photo .gros{font-size:26px;}
+
+/* Historique */
+.filtres{display:flex; gap:8px; margin-bottom:10px;}
+.entree{display:flex; align-items:center; gap:10px; padding:11px 12px; background:var(--carte);
+  border:1px solid var(--ligne); border-radius:12px; margin-bottom:7px; cursor:pointer;}
+.entree .corps{flex:1; min-width:0;}
+.entree .l1{font-weight:700; font-size:14.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.entree .l2{font-size:12.5px; color:var(--encre2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.entree .montant{font-weight:800; font-size:15px; font-variant-numeric:tabular-nums; white-space:nowrap;}
+.entree .montant.deb{color:var(--debit);}
+.entree .montant.rec{color:var(--recette);}
+.entree .trombone{font-size:13px;}
+.totaux{display:flex; gap:8px; margin:10px 0 14px;}
+.totaux .bloc{flex:1; background:var(--carte); border:1px solid var(--ligne); border-radius:12px; padding:10px 12px;}
+.totaux .bloc .lib{font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--encre2); font-weight:700;}
+.totaux .bloc .val{font-size:17px; font-weight:800; font-variant-numeric:tabular-nums;}
+.mois-titre{font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.6px; color:var(--encre2); margin:16px 2px 8px;}
+
+/* Bandeau récurrences */
+.bandeau{background:#FFF7E6; border:1px solid #EAD9A8; border-radius:12px; padding:12px; margin-bottom:12px;
+  display:flex; align-items:center; gap:10px; font-size:14px;}
+.bandeau .btn{width:auto;}
+
+/* Feuille détail + recadrage */
+.voile{position:fixed; inset:0; background:rgba(20,28,35,.5); z-index:40; display:none;}
+.voile.ouvert{display:block;}
+.feuille{position:fixed; left:0; right:0; bottom:0; z-index:50; background:var(--carte);
+  border-radius:18px 18px 0 0; padding:16px 16px calc(16px + env(safe-area-inset-bottom));
+  transform:translateY(105%); transition:transform .2s ease; max-height:85vh; overflow-y:auto;}
+.feuille.ouverte{transform:translateY(0);}
+.feuille h3{margin:0 0 4px; font-size:17px;}
+.feuille .meta{font-size:13.5px; color:var(--encre2); margin-bottom:12px; line-height:1.5;}
+.feuille .actions{display:grid; gap:8px;}
+
+#recadrage{position:fixed; inset:0; z-index:60; background:#10171D; display:none; flex-direction:column;}
+#recadrage.ouvert{display:flex;}
+#recadrage .zone{flex:1; position:relative; touch-action:none; overflow:hidden;}
+#recadrage canvas{position:absolute; inset:0; width:100%; height:100%;}
+#recadrage .barre{display:flex; gap:8px; padding:12px calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left)); background:#10171D;}
+#recadrage .barre .btn{font-size:14px; padding:12px 8px;}
+
+.vide{text-align:center; color:var(--encre2); padding:34px 16px; font-size:14.5px; line-height:1.6;}
+.vide .gros{font-size:34px; display:block; margin-bottom:8px;}
+.note{font-size:13px; color:var(--encre2); line-height:1.5; margin-top:8px;}
+.liste-simple{list-style:none; margin:0; padding:0;}
+.liste-simple li{display:flex; align-items:center; gap:8px; padding:10px 2px; border-bottom:1px solid var(--ligne);}
+.liste-simple li:last-child{border-bottom:none;}
+.liste-simple .txt{flex:1; min-width:0;}
+.puce-x{border:none; background:#FBEFEC; color:var(--debit); border-radius:8px; width:32px; height:32px;
+  font-size:15px; font-weight:800; cursor:pointer; flex:none;}
+.puce-ed{border:none; background:var(--accent-doux); color:var(--encre); border-radius:8px; width:32px; height:32px;
+  font-size:14px; cursor:pointer; flex:none;}
+#toast{position:fixed; bottom:86px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--encre);
+  color:#fff; padding:11px 18px; border-radius:12px; font-size:14px; opacity:0; transition:all .2s; z-index:70;
+  pointer-events:none; max-width:88vw; text-align:center;}
+#toast.visible{opacity:1; transform:translateX(-50%) translateY(0);}
+.badge-rec{font-size:10.5px; background:var(--accent-doux); border-radius:6px; padding:2px 6px; font-weight:700; color:var(--encre2);}
+h2.titre-vue{font-size:20px; margin:2px 2px 12px; font-weight:800;}
+</style>
+</head>
+<body>
+
+<header class="app"><h1>Factures Immo</h1><span class="sous" id="sous-titre"></span></header>
+
+<main>
+
+<!-- ══════════ VUE SAISIE ══════════ -->
+<section class="vue active" id="vue-saisie">
+  <div id="bandeau-rec" style="display:none" class="bandeau">
+    <span style="flex:1" id="bandeau-rec-txt"></span>
+    <button class="btn principal mini" onclick="genererRecurrences()">Générer</button>
+  </div>
+
+  <div class="seg" id="seg-type">
+    <button class="actif" data-type="debit" onclick="setType('debit')">🧾 Facture</button>
+    <button data-type="recette" onclick="setType('recette')">🏠 Loyer / Charges</button>
+  </div>
+
+  <div class="carte">
+    <div id="bloc-photos">
+      <label class="champ" style="margin-top:0">Photos de la facture</label>
+      <div class="photos-grille" id="photos-grille">
+        <button class="ajout-photo" onclick="document.getElementById('input-photo').click()">
+          <span class="gros">📷</span><span>Prendre<br>une photo</span>
+        </button>
+      </div>
+      <input type="file" id="input-photo" accept="image/*" capture="environment" hidden>
+      <div class="note">Touche une photo pour la recadrer, la pivoter ou la supprimer.</div>
+    </div>
+
+    <div class="rangee">
+      <div>
+        <label class="champ">Date</label>
+        <input type="date" id="f-date">
+      </div>
+      <div id="bloc-montant-debit">
+        <label class="champ">Montant TTC (€)</label>
+        <input type="number" id="f-montant" inputmode="decimal" step="0.01" min="0" placeholder="0,00">
+      </div>
+    </div>
+
+    <div class="rangee" id="bloc-montants-recette" style="display:none">
+      <div>
+        <label class="champ">Loyer (€)</label>
+        <input type="number" id="f-loyer" inputmode="decimal" step="0.01" min="0" placeholder="0,00">
+      </div>
+      <div>
+        <label class="champ">Charges (€)</label>
+        <input type="number" id="f-charges" inputmode="decimal" step="0.01" min="0" placeholder="0,00">
+      </div>
+    </div>
+
+    <div class="rangee">
+      <div>
+        <label class="champ">Immeuble</label>
+        <select id="f-immeuble" onchange="majApparts()"></select>
+      </div>
+      <div>
+        <label class="champ">Appartement</label>
+        <select id="f-appart"></select>
+      </div>
+    </div>
+
+    <div id="bloc-fournisseur">
+      <label class="champ">Fournisseur</label>
+      <input type="text" id="f-fournisseur" list="dl-fournisseurs" placeholder="Ex : LEROY MERLIN" autocapitalize="characters">
+      <datalist id="dl-fournisseurs"></datalist>
+    </div>
+
+    <div id="bloc-locataire" style="display:none">
+      <label class="champ">Locataire</label>
+      <input type="text" id="f-locataire" list="dl-locataires" placeholder="Nom du locataire">
+      <datalist id="dl-locataires"></datalist>
+    </div>
+
+    <label class="champ">Libellé</label>
+    <input type="text" id="f-libelle" placeholder="Ex : Pommeau de douche">
+
+    <div style="margin-top:16px; display:grid; gap:8px;">
+      <button class="btn principal" onclick="enregistrer()" id="btn-enregistrer">✓ Enregistrer</button>
+      <button class="btn second" onclick="annulerEdition()" id="btn-annuler-edition" style="display:none">Annuler la modification</button>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ VUE HISTORIQUE ══════════ -->
+<section class="vue" id="vue-historique">
+  <h2 class="titre-vue">Historique</h2>
+  <div class="filtres">
+    <select id="filtre-mois" onchange="rendreHistorique()"></select>
+    <select id="filtre-immeuble" onchange="rendreHistorique()"></select>
+  </div>
+  <div class="totaux">
+    <div class="bloc"><div class="lib">Recettes</div><div class="val" style="color:var(--recette)" id="tot-recettes">0 €</div></div>
+    <div class="bloc"><div class="lib">Débits</div><div class="val" style="color:var(--debit)" id="tot-debits">0 €</div></div>
+  </div>
+  <div id="liste-historique"></div>
+</section>
+
+<!-- ══════════ VUE RÉCURRENTS ══════════ -->
+<section class="vue" id="vue-recurrents">
+  <h2 class="titre-vue">Écritures récurrentes</h2>
+  <div class="note" style="margin:-6px 2px 12px">Saisis une seule fois un loyer ou une charge qui revient chaque mois : les lignes seront générées automatiquement.</div>
+  <div id="liste-recurrents"></div>
+  <button class="btn second" onclick="ouvrirFormRec()" style="margin-top:8px">＋ Ajouter une écriture récurrente</button>
+
+  <div class="carte" id="form-rec" style="display:none; margin-top:12px">
+    <div class="seg" id="seg-type-rec">
+      <button class="actif" data-type="recette" onclick="setTypeRec('recette')">🏠 Loyer / Charges</button>
+      <button data-type="debit" onclick="setTypeRec('debit')">🧾 Débit</button>
+    </div>
+    <div class="rangee">
+      <div><label class="champ">Jour du mois</label><input type="number" id="r-jour" min="1" max="31" value="1"></div>
+      <div><label class="champ">Premier mois</label><input type="month" id="r-debut"></div>
+    </div>
+    <div class="rangee">
+      <div><label class="champ">Immeuble</label><select id="r-immeuble" onchange="majAppartsRec()"></select></div>
+      <div><label class="champ">Appartement</label><select id="r-appart"></select></div>
+    </div>
+    <div id="r-bloc-recette">
+      <label class="champ">Locataire</label>
+      <input type="text" id="r-locataire" list="dl-locataires" placeholder="Nom du locataire">
+      <div class="rangee">
+        <div><label class="champ">Loyer (€)</label><input type="number" id="r-loyer" step="0.01" min="0" inputmode="decimal"></div>
+        <div><label class="champ">Charges (€)</label><input type="number" id="r-charges" step="0.01" min="0" inputmode="decimal"></div>
+      </div>
+    </div>
+    <div id="r-bloc-debit" style="display:none">
+      <label class="champ">Fournisseur</label>
+      <input type="text" id="r-fournisseur" list="dl-fournisseurs" autocapitalize="characters">
+      <label class="champ">Montant (€)</label>
+      <input type="number" id="r-montant" step="0.01" min="0" inputmode="decimal">
+    </div>
+    <label class="champ">Libellé</label>
+    <input type="text" id="r-libelle" placeholder="Ex : Loyer mensuel">
+    <div style="margin-top:14px; display:grid; gap:8px">
+      <button class="btn principal" onclick="enregistrerRec()">✓ Enregistrer</button>
+      <button class="btn second" onclick="fermerFormRec()">Annuler</button>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ VUE EXPORT ══════════ -->
+<section class="vue" id="vue-export">
+  <h2 class="titre-vue">Export comptable</h2>
+  <div class="carte">
+    <label class="champ" style="margin-top:0">Année</label>
+    <select id="export-annee"></select>
+    <div style="margin-top:14px; display:grid; gap:8px">
+      <button class="btn principal" onclick="exporterXlsx()">📊 Générer le fichier COMPTA (.xlsx)</button>
+      <button class="btn second" onclick="exporterZip()">🗜️ Tout exporter — Excel + PDF des factures (.zip)</button>
+    </div>
+    <div class="note">Le fichier Excel reprend exactement les colonnes de ton onglet SAISIES (il s&rsquo;ouvre dans OpenOffice). Le ZIP contient en plus un PDF par facture photographiée — prêt à envoyer au comptable en fin d&rsquo;année.</div>
+  </div>
+</section>
+
+<!-- ══════════ VUE RÉGLAGES ══════════ -->
+<section class="vue" id="vue-reglages">
+  <h2 class="titre-vue">Réglages</h2>
+  <div class="carte">
+    <label class="champ" style="margin-top:0">Immeubles et appartements</label>
+    <div id="liste-immeubles"></div>
+    <div class="rangee" style="margin-top:10px">
+      <input type="text" id="nouvel-immeuble" placeholder="Nom du nouvel immeuble" autocapitalize="characters">
+      <button class="btn second mini" style="flex:0 0 auto" onclick="ajouterImmeuble()">＋ Ajouter</button>
+    </div>
+  </div>
+  <div class="carte">
+    <label class="champ" style="margin-top:0">Sauvegarde</label>
+    <div class="note" style="margin:0 0 10px">Toutes les données sont stockées uniquement sur ce téléphone. Pense à faire une sauvegarde régulière (photos comprises) et à la déposer sur ton ordinateur ou un cloud.</div>
+    <div style="display:grid; gap:8px">
+      <button class="btn second" onclick="sauvegarder()">💾 Exporter une sauvegarde complète</button>
+      <button class="btn second" onclick="document.getElementById('input-restaure').click()">📂 Restaurer une sauvegarde</button>
+      <input type="file" id="input-restaure" accept=".json,application/json" hidden>
+    </div>
+  </div>
+  <div class="note" style="text-align:center" id="info-stockage"></div>
+</section>
+
+</main>
+
+<!-- Nav basse -->
+<nav class="basse">
+  <button class="actif" data-vue="saisie" onclick="montrerVue('saisie')"><span class="ico">📷</span>Saisie</button>
+  <button data-vue="historique" onclick="montrerVue('historique')"><span class="ico">📒</span>Historique</button>
+  <button data-vue="recurrents" onclick="montrerVue('recurrents')"><span class="ico">🔁</span>Récurrents</button>
+  <button data-vue="export" onclick="montrerVue('export')"><span class="ico">📤</span>Export</button>
+  <button data-vue="reglages" onclick="montrerVue('reglages')"><span class="ico">⚙️</span>Réglages</button>
+</nav>
+
+<!-- Feuille détail entrée -->
+<div class="voile" id="voile" onclick="fermerFeuille()"></div>
+<div class="feuille" id="feuille">
+  <h3 id="feuille-titre"></h3>
+  <div class="meta" id="feuille-meta"></div>
+  <div class="actions" id="feuille-actions"></div>
+</div>
+
+<!-- Recadrage plein écran -->
+<div id="recadrage">
+  <div class="zone" id="crop-zone"><canvas id="crop-canvas"></canvas></div>
+  <div class="barre">
+    <button class="btn second" onclick="cropPivoter()">⟳ Pivoter</button>
+    <button class="btn second" onclick="cropReprendre()">📷 Reprendre</button>
+    <button class="btn danger" onclick="cropSupprimer()">🗑</button>
+    <button class="btn principal" onclick="cropValider()">✓ Valider</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ════════════════════ CONSTANTES & ÉTAT ════════════════════ */
+const MOIS = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+const COLONNES = ["Numéro de mois","Mois","Date","Immeuble","Appart","Locataires","Fournisseurs","Libellé","Loyer","Charges","Débits"];
+let DB = null;
+let TYPE = "debit";           // type courant du formulaire de saisie
+let TYPE_REC = "recette";     // type courant du formulaire récurrent
+let PHOTOS = [];              // photos en cours de saisie [{id, blob, url}]
+let EDIT_ID = null;           // id d'entrée en cours de modification
+let EDIT_REC_ID = null;
+let CROP = null;              // état du recadrage
+
+const $ = id => document.getElementById(id);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+function lireLS(cle, defaut){ try{ const v = localStorage.getItem(cle); return v ? JSON.parse(v) : defaut; }catch(e){ return defaut; } }
+function ecrireLS(cle, val){ localStorage.setItem(cle, JSON.stringify(val)); }
+
+let SETTINGS = lireLS("fi-settings", null);
+if(!SETTINGS){
+  SETTINGS = { immeubles: [
+    { nom:"PASTEUR", apparts:["RDC","1er","2ème"] },
+    { nom:"HAUSSONVILLE", apparts:["RDC","1er","2ème"] },
+    { nom:"AVRAINVILLE", apparts:[] },
+    { nom:"NANCY", apparts:[] }
+  ]};
+  ecrireLS("fi-settings", SETTINGS);
+}
+let RECS = lireLS("fi-recs", []);
+
+/* ════════════════════ INDEXEDDB ════════════════════ */
+function ouvrirDB(){
+  return new Promise((res, rej) => {
+    const r = indexedDB.open("factures-immo", 1);
+    r.onupgradeneeded = e => {
+      const d = e.target.result;
+      if(!d.objectStoreNames.contains("entries")) d.createObjectStore("entries", { keyPath:"id" });
+      if(!d.objectStoreNames.contains("photos"))  d.createObjectStore("photos",  { keyPath:"id" });
+    };
+    r.onsuccess = e => res(e.target.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+function dbPut(store, obj){ return new Promise((res,rej)=>{ const t=DB.transaction(store,"readwrite").objectStore(store).put(obj); t.onsuccess=()=>res(); t.onerror=()=>rej(t.error); }); }
+function dbGet(store, id){ return new Promise((res,rej)=>{ const t=DB.transaction(store).objectStore(store).get(id); t.onsuccess=()=>res(t.result); t.onerror=()=>rej(t.error); }); }
+function dbTout(store){ return new Promise((res,rej)=>{ const t=DB.transaction(store).objectStore(store).getAll(); t.onsuccess=()=>res(t.result||[]); t.onerror=()=>rej(t.error); }); }
+function dbSuppr(store, id){ return new Promise((res,rej)=>{ const t=DB.transaction(store,"readwrite").objectStore(store).delete(id); t.onsuccess=()=>res(); t.onerror=()=>rej(t.error); }); }
+
+/* ════════════════════ OUTILS ════════════════════ */
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("visible"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("visible"), 2600); }
+function euros(n){ return (n||0).toLocaleString("fr-FR",{minimumFractionDigits:2, maximumFractionDigits:2}) + " €"; }
+function slug(s){ return (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9]+/g,"-").replace(/^-+|-+$/g,"").toUpperCase(); }
+function dateFR(iso){ const [a,m,j]=iso.split("-"); return j+"/"+m+"/"+a; }
+function moisCle(iso){ return iso.slice(0,7); }
+function aujourdISO(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function montantEntree(e){ return e.type==="debit" ? (e.debit||0) : (e.loyer||0)+(e.charges||0); }
+
+function nomPdf(e){
+  const tiers = e.type==="debit" ? e.fournisseur : e.locataire;
+  let n = e.dateISO + "_" + slug(e.immeuble);
+  if(e.appart) n += "_" + slug(e.appart);
+  if(tiers) n += "_" + slug(tiers);
+  n += "_" + montantEntree(e).toFixed(2).replace(".","-");
+  return n + ".pdf";
+}
+
+/* ════════════════════ NAVIGATION ════════════════════ */
+function montrerVue(nom){
+  document.querySelectorAll(".vue").forEach(v => v.classList.remove("active"));
+  $("vue-" + nom).classList.add("active");
+  document.querySelectorAll("nav.basse button").forEach(b => b.classList.toggle("actif", b.dataset.vue===nom));
+  if(nom==="historique") rendreHistorique();
+  if(nom==="recurrents") rendreRecurrents();
+  if(nom==="export") rendreExport();
+  if(nom==="reglages") rendreReglages();
+  window.scrollTo(0,0);
+}
+
+/* ════════════════════ SAISIE ════════════════════ */
+function setType(t){
+  TYPE = t;
+  document.querySelectorAll("#seg-type button").forEach(b => b.classList.toggle("actif", b.dataset.type===t));
+  const deb = t==="debit";
+  $("bloc-photos").style.display = deb ? "" : "none";
+  $("bloc-montant-debit").style.display = deb ? "" : "none";
+  $("bloc-montants-recette").style.display = deb ? "none" : "";
+  $("bloc-fournisseur").style.display = deb ? "" : "none";
+  $("bloc-locataire").style.display = deb ? "none" : "";
+}
+
+function remplirSelectImmeubles(sel, valeur){
+  sel.innerHTML = "";
+  SETTINGS.immeubles.forEach(im => {
+    const o = document.createElement("option"); o.value = im.nom; o.textContent = im.nom; sel.appendChild(o);
+  });
+  if(valeur) sel.value = valeur;
+}
+function remplirSelectApparts(selImm, selApp, valeur){
+  const im = SETTINGS.immeubles.find(i => i.nom === selImm.value);
+  selApp.innerHTML = "<option value=''>—</option>";
+  (im ? im.apparts : []).forEach(a => { const o=document.createElement("option"); o.value=a; o.textContent=a; selApp.appendChild(o); });
+  if(valeur) selApp.value = valeur;
+}
+function majApparts(){ remplirSelectApparts($("f-immeuble"), $("f-appart")); }
+function majAppartsRec(){ remplirSelectApparts($("r-immeuble"), $("r-appart")); }
+
+async function majDatalists(){
+  const entrees = await dbTout("entries");
+  const fs = [...new Set(entrees.map(e=>e.fournisseur).filter(Boolean))].sort();
+  const ls = [...new Set(entrees.map(e=>e.locataire).filter(Boolean))].sort();
+  $("dl-fournisseurs").innerHTML = fs.map(f=>"<option value=\""+f.replace(/"/g,"&quot;")+"\">").join("");
+  $("dl-locataires").innerHTML  = ls.map(l=>"<option value=\""+l.replace(/"/g,"&quot;")+"\">").join("");
+}
+
+function rendrePhotos(){
+  const g = $("photos-grille");
+  g.querySelectorAll(".vignette").forEach(v => v.remove());
+  PHOTOS.forEach((p, i) => {
+    const d = document.createElement("div");
+    d.className = "vignette";
+    d.innerHTML = "<img alt=\"Photo " + (i+1) + "\"><span class=\"num\">" + (i+1) + "</span>";
+    d.querySelector("img").src = p.url;
+    d.onclick = () => ouvrirRecadrage(i);
+    g.appendChild(d);
+  });
+}
+
+$("input-photo").addEventListener("change", async ev => {
+  const f = ev.target.files[0];
+  ev.target.value = "";
+  if(!f) return;
+  const blob = await reduireImage(f, 2400, 0.9);
+  const p = { id: uid(), blob, url: URL.createObjectURL(blob) };
+  PHOTOS.push(p);
+  rendrePhotos();
+  ouvrirRecadrage(PHOTOS.length - 1);   // proposer directement le recadrage
+});
+
+function reduireImage(fichier, maxDim, qualite){
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.naturalWidth, h = img.naturalHeight;
+      const r = Math.min(1, maxDim / Math.max(w, h));
+      w = Math.round(w*r); h = Math.round(h*r);
+      const c = document.createElement("canvas"); c.width=w; c.height=h;
+      c.getContext("2d").drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(img.src);
+      c.toBlob(b => b ? res(b) : rej(new Error("Conversion image impossible")), "image/jpeg", qualite);
+    };
+    img.onerror = rej;
+    img.src = URL.createObjectURL(fichier);
+  });
+}
+
+async function enregistrer(){
+  const dateISO = $("f-date").value;
+  const immeuble = $("f-immeuble").value;
+  if(!dateISO){ toast("Indique la date."); return; }
+  if(!immeuble){ toast("Choisis un immeuble (à créer dans Réglages)."); return; }
+
+  const e = {
+    id: EDIT_ID || uid(),
+    type: TYPE, dateISO, immeuble,
+    appart: $("f-appart").value || "",
+    libelle: $("f-libelle").value.trim(),
+    createdAt: Date.now()
+  };
+  if(TYPE === "debit"){
+    e.fournisseur = $("f-fournisseur").value.trim().toUpperCase();
+    e.debit = parseFloat($("f-montant").value) || 0;
+    e.locataire = ""; e.loyer = 0; e.charges = 0;
+    if(!e.debit){ toast("Indique le montant."); return; }
+    if(!e.fournisseur){ toast("Indique le fournisseur."); return; }
+  } else {
+    e.locataire = $("f-locataire").value.trim();
+    e.loyer = parseFloat($("f-loyer").value) || 0;
+    e.charges = parseFloat($("f-charges").value) || 0;
+    e.fournisseur = ""; e.debit = 0;
+    if(!e.loyer && !e.charges){ toast("Indique le loyer ou les charges."); return; }
+  }
+
+  // Photos : si édition, supprimer celles retirées
+  if(EDIT_ID){
+    const ancienne = await dbGet("entries", EDIT_ID);
+    const gardees = new Set(PHOTOS.map(p=>p.id));
+    for(const pid of (ancienne && ancienne.photoIds || [])) if(!gardees.has(pid)) await dbSuppr("photos", pid);
+  }
+  e.photoIds = [];
+  for(const p of PHOTOS){
+    await dbPut("photos", { id: p.id, blob: p.blob });
+    e.photoIds.push(p.id);
+  }
+  await dbPut("entries", e);
+  toast(EDIT_ID ? "Écriture modifiée ✓" : "Écriture enregistrée ✓");
+  resetFormulaire();
+  majDatalists();
+}
+
+function resetFormulaire(){
+  EDIT_ID = null;
+  $("btn-annuler-edition").style.display = "none";
+  $("btn-enregistrer").textContent = "✓ Enregistrer";
+  PHOTOS.forEach(p => URL.revokeObjectURL(p.url));
+  PHOTOS = [];
+  rendrePhotos();
+  $("f-date").value = aujourdISO();
+  ["f-montant","f-loyer","f-charges","f-fournisseur","f-locataire","f-libelle"].forEach(id => $(id).value = "");
+}
+function annulerEdition(){ resetFormulaire(); montrerVue("historique"); }
+
+async function editerEntree(id){
+  const e = await dbGet("entries", id);
+  if(!e) return;
+  fermerFeuille();
+  EDIT_ID = id;
+  setType(e.type);
+  $("f-date").value = e.dateISO;
+  remplirSelectImmeubles($("f-immeuble"), e.immeuble);
+  remplirSelectApparts($("f-immeuble"), $("f-appart"), e.appart);
+  $("f-fournisseur").value = e.fournisseur || "";
+  $("f-locataire").value = e.locataire || "";
+  $("f-libelle").value = e.libelle || "";
+  $("f-montant").value = e.debit || "";
+  $("f-loyer").value = e.loyer || "";
+  $("f-charges").value = e.charges || "";
+  PHOTOS = [];
+  for(const pid of (e.photoIds||[])){
+    const ph = await dbGet("photos", pid);
+    if(ph) PHOTOS.push({ id: pid, blob: ph.blob, url: URL.createObjectURL(ph.blob) });
+  }
+  rendrePhotos();
+  $("btn-annuler-edition").style.display = "";
+  $("btn-enregistrer").textContent = "✓ Enregistrer les modifications";
+  montrerVue("saisie");
+}
+
+/* ════════════════════ RECADRAGE ════════════════════ */
+function ouvrirRecadrage(index){
+  const p = PHOTOS[index];
+  const img = new Image();
+  img.onload = () => {
+    // canvas de travail à pleine résolution (rotation appliquée dedans)
+    const wc = document.createElement("canvas");
+    wc.width = img.naturalWidth; wc.height = img.naturalHeight;
+    wc.getContext("2d").drawImage(img, 0, 0);
+    CROP = { index, work: wc, rect: null };
+    $("recadrage").classList.add("ouvert");
+    requestAnimationFrame(installerCrop);
+  };
+  img.src = p.url;
+}
+
+function installerCrop(){
+  const zone = $("crop-zone"), cv = $("crop-canvas");
+  cv.width = zone.clientWidth * devicePixelRatio;
+  cv.height = zone.clientHeight * devicePixelRatio;
+  const marge = 0.05;
+  const w = CROP.work.width, h = CROP.work.height;
+  CROP.rect = { x: w*marge, y: h*marge, w: w*(1-2*marge), h: h*(1-2*marge) };  // en coords image
+  dessinerCrop();
+}
+
+function geomCrop(){
+  const cv = $("crop-canvas");
+  const W = cv.width, H = cv.height;
+  const iw = CROP.work.width, ih = CROP.work.height;
+  const s = Math.min((W*0.94)/iw, (H*0.94)/ih);
+  const ox = (W - iw*s)/2, oy = (H - ih*s)/2;
+  return { s, ox, oy, W, H };
+}
+
+function dessinerCrop(){
+  const cv = $("crop-canvas"), ctx = cv.getContext("2d");
+  const g = geomCrop();
+  ctx.clearRect(0,0,g.W,g.H);
+  ctx.drawImage(CROP.work, g.ox, g.oy, CROP.work.width*g.s, CROP.work.height*g.s);
+  // voile hors zone
+  const r = CROP.rect;
+  const rx = g.ox + r.x*g.s, ry = g.oy + r.y*g.s, rw = r.w*g.s, rh = r.h*g.s;
+  ctx.fillStyle = "rgba(16,23,29,.62)";
+  ctx.beginPath();
+  ctx.rect(0,0,g.W,g.H);
+  ctx.rect(rx,ry,rw,rh);
+  ctx.fill("evenodd");
+  ctx.strokeStyle = "#fff"; ctx.lineWidth = 2*devicePixelRatio;
+  ctx.strokeRect(rx,ry,rw,rh);
+  // poignées
+  ctx.fillStyle = "#fff";
+  const R = 11*devicePixelRatio;
+  [[rx,ry],[rx+rw,ry],[rx,ry+rh],[rx+rw,ry+rh]].forEach(([x,y])=>{ ctx.beginPath(); ctx.arc(x,y,R,0,7); ctx.fill(); });
+}
+
+let cropTouche = null;
+$("crop-zone").addEventListener("pointerdown", ev => {
+  if(!CROP) return;
+  ev.preventDefault();
+  $("crop-zone").setPointerCapture(ev.pointerId);
+  const g = geomCrop();
+  const px = ev.offsetX*devicePixelRatio, py = ev.offsetY*devicePixelRatio;
+  const r = CROP.rect;
+  const coins = [["nw",r.x,r.y],["ne",r.x+r.w,r.y],["sw",r.x,r.y+r.h],["se",r.x+r.w,r.y+r.h]];
+  const seuil = 26*devicePixelRatio;
+  cropTouche = null;
+  for(const [nom,cx,cy] of coins){
+    const sx = g.ox+cx*g.s, sy = g.oy+cy*g.s;
+    if(Math.hypot(px-sx, py-sy) < seuil){ cropTouche = { mode:nom }; break; }
+  }
+  if(!cropTouche){
+    const ix = (px-g.ox)/g.s, iy = (py-g.oy)/g.s;
+    if(ix>r.x && ix<r.x+r.w && iy>r.y && iy<r.y+r.h) cropTouche = { mode:"move", dx:ix-r.x, dy:iy-r.y };
+  }
+});
+$("crop-zone").addEventListener("pointermove", ev => {
+  if(!CROP || !cropTouche) return;
+  ev.preventDefault();
+  const g = geomCrop();
+  const ix = Math.max(0, Math.min(CROP.work.width,  (ev.offsetX*devicePixelRatio-g.ox)/g.s));
+  const iy = Math.max(0, Math.min(CROP.work.height, (ev.offsetY*devicePixelRatio-g.oy)/g.s));
+  const r = CROP.rect, MIN = 60;
+  const m = cropTouche.mode;
+  if(m==="move"){
+    r.x = Math.max(0, Math.min(CROP.work.width - r.w, ix - cropTouche.dx));
+    r.y = Math.max(0, Math.min(CROP.work.height - r.h, iy - cropTouche.dy));
+  } else {
+    if(m.includes("w")){ const x2=r.x+r.w; r.x=Math.min(ix, x2-MIN); r.w=x2-r.x; }
+    if(m.includes("e")){ r.w=Math.max(MIN, ix-r.x); }
+    if(m.includes("n")){ const y2=r.y+r.h; r.y=Math.min(iy, y2-MIN); r.h=y2-r.y; }
+    if(m.includes("s")){ r.h=Math.max(MIN, iy-r.y); }
+  }
+  dessinerCrop();
+});
+$("crop-zone").addEventListener("pointerup", () => { cropTouche = null; });
+
+function cropPivoter(){
+  const w = CROP.work;
+  const c = document.createElement("canvas");
+  c.width = w.height; c.height = w.width;
+  const ctx = c.getContext("2d");
+  ctx.translate(c.width, 0); ctx.rotate(Math.PI/2);
+  ctx.drawImage(w, 0, 0);
+  CROP.work = c;
+  installerCrop();
+}
+function cropReprendre(){ fermerRecadrage(true); $("input-photo").click(); }
+function cropSupprimer(){
+  const p = PHOTOS[CROP.index];
+  URL.revokeObjectURL(p.url);
+  PHOTOS.splice(CROP.index, 1);
+  fermerRecadrage(); rendrePhotos();
+}
+function cropValider(){
+  const r = CROP.rect;
+  const c = document.createElement("canvas");
+  c.width = Math.round(r.w); c.height = Math.round(r.h);
+  c.getContext("2d").drawImage(CROP.work, r.x, r.y, r.w, r.h, 0, 0, c.width, c.height);
+  c.toBlob(b => {
+    const p = PHOTOS[CROP.index];
+    URL.revokeObjectURL(p.url);
+    p.blob = b; p.url = URL.createObjectURL(b); p.id = uid();
+    fermerRecadrage(); rendrePhotos();
+  }, "image/jpeg", 0.88);
+}
+function fermerRecadrage(supprimerPhoto){
+  if(supprimerPhoto && CROP){
+    const p = PHOTOS[CROP.index];
+    if(p){ URL.revokeObjectURL(p.url); PHOTOS.splice(CROP.index,1); rendrePhotos(); }
+  }
+  $("recadrage").classList.remove("ouvert");
+  CROP = null;
+}
+
+/* ════════════════════ HISTORIQUE ════════════════════ */
+async function rendreHistorique(){
+  const entrees = (await dbTout("entries")).sort((a,b)=> b.dateISO.localeCompare(a.dateISO) || b.createdAt-a.createdAt);
+  // filtres
+  const selM = $("filtre-mois"), selI = $("filtre-immeuble");
+  const moisDispo = [...new Set(entrees.map(e=>moisCle(e.dateISO)))].sort().reverse();
+  const vM = selM.value, vI = selI.value;
+  selM.innerHTML = "<option value=''>Tous les mois</option>" + moisDispo.map(m=>{
+    const [a,mm]=m.split("-"); return "<option value=\""+m+"\">"+MOIS[+mm-1]+" "+a+"</option>";
+  }).join("");
+  selI.innerHTML = "<option value=''>Tous immeubles</option>" + SETTINGS.immeubles.map(i=>"<option>"+i.nom+"</option>").join("");
+  if([...selM.options].some(o=>o.value===vM)) selM.value=vM;
+  if([...selI.options].some(o=>o.value===vI)) selI.value=vI;
+
+  const filtrees = entrees.filter(e => (!selM.value || moisCle(e.dateISO)===selM.value) && (!selI.value || e.immeuble===selI.value));
+  let totR=0, totD=0;
+  filtrees.forEach(e => { if(e.type==="debit") totD+=e.debit||0; else totR+=(e.loyer||0)+(e.charges||0); });
+  $("tot-recettes").textContent = euros(totR);
+  $("tot-debits").textContent = euros(totD);
+
+  const cont = $("liste-historique");
+  cont.innerHTML = "";
+  if(!filtrees.length){
+    cont.innerHTML = "<div class='vide'><span class='gros'>📒</span>Aucune écriture pour le moment.<br>Ajoute ta première facture depuis l&rsquo;onglet Saisie.</div>";
+    return;
+  }
+  let moisCourant = "";
+  for(const e of filtrees){
+    const mc = moisCle(e.dateISO);
+    if(mc !== moisCourant){
+      moisCourant = mc;
+      const [a,mm] = mc.split("-");
+      const t = document.createElement("div"); t.className="mois-titre"; t.textContent = MOIS[+mm-1]+" "+a;
+      cont.appendChild(t);
+    }
+    const d = document.createElement("div");
+    d.className = "entree";
+    const tiers = e.type==="debit" ? e.fournisseur : (e.locataire || "Loyer");
+    const lieu = e.immeuble + (e.appart ? " · " + e.appart : "");
+    d.innerHTML =
+      "<div class='corps'><div class='l1'>" + tiers + (e.recId ? " <span class='badge-rec'>récurrent</span>" : "") + "</div>" +
+      "<div class='l2'>" + dateFR(e.dateISO) + " — " + lieu + (e.libelle ? " — " + e.libelle : "") + "</div></div>" +
+      (e.photoIds && e.photoIds.length ? "<span class='trombone'>📎</span>" : "") +
+      "<div class='montant " + (e.type==="debit"?"deb":"rec") + "'>" + (e.type==="debit"?"−":"+") + euros(montantEntree(e)) + "</div>";
+    d.onclick = () => ouvrirFeuille(e.id);
+    cont.appendChild(d);
+  }
+}
+
+async function ouvrirFeuille(id){
+  const e = await dbGet("entries", id);
+  if(!e) return;
+  const tiers = e.type==="debit" ? e.fournisseur : (e.locataire || "Loyer");
+  $("feuille-titre").textContent = tiers + " — " + euros(montantEntree(e));
+  let meta = dateFR(e.dateISO) + " · " + e.immeuble + (e.appart ? " · " + e.appart : "");
+  if(e.libelle) meta += "<br>" + e.libelle;
+  if(e.type==="recette") meta += "<br>Loyer " + euros(e.loyer) + " + charges " + euros(e.charges);
+  $("feuille-meta").innerHTML = meta;
+  const a = $("feuille-actions");
+  a.innerHTML = "";
+  const aPhotos = e.photoIds && e.photoIds.length;
+  const boutons = [];
+  if(aPhotos){
+    boutons.push(["📄 Voir le PDF", "principal", () => pdfEntree(e, "voir")]);
+    boutons.push(["📤 Partager le PDF", "second", () => pdfEntree(e, "partager")]);
+  }
+  boutons.push(["✏️ Modifier", "second", () => editerEntree(e.id)]);
+  boutons.push(["🗑 Supprimer", "danger", () => supprimerEntree(e.id)]);
+  for(const [txt, cls, fn] of boutons){
+    const b = document.createElement("button");
+    b.className = "btn " + cls; b.textContent = txt; b.onclick = fn;
+    a.appendChild(b);
+  }
+  $("voile").classList.add("ouvert");
+  $("feuille").classList.add("ouverte");
+}
+function fermerFeuille(){ $("voile").classList.remove("ouvert"); $("feuille").classList.remove("ouverte"); }
+
+async function supprimerEntree(id){
+  if(!confirm("Supprimer définitivement cette écriture et ses photos ?")) return;
+  const e = await dbGet("entries", id);
+  for(const pid of (e && e.photoIds || [])) await dbSuppr("photos", pid);
+  await dbSuppr("entries", id);
+  fermerFeuille();
+  toast("Écriture supprimée");
+  rendreHistorique();
+}
+
+/* ════════════════════ PDF ════════════════════ */
+function blobVersDataURL(blob){
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob); });
+}
+function dimensionsImage(dataURL){
+  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res({w:i.naturalWidth, h:i.naturalHeight}); i.onerror = rej; i.src = dataURL; });
+}
+
+async function genererPdf(e){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:"mm", format:"a4" });
+  const PW = 210, PH = 297, M = 12;
+  let premiere = true;
+  for(const pid of e.photoIds){
+    const ph = await dbGet("photos", pid);
+    if(!ph) continue;
+    if(!premiere) doc.addPage();
+    let yHaut = M;
+    if(premiere){
+      doc.setFillColor(246,244,239);
+      doc.rect(0, 0, PW, 34, "F");
+      doc.setTextColor(34,48,60);
+      doc.setFont("helvetica","bold"); doc.setFontSize(13);
+      doc.text("JUSTIFICATIF — " + (e.fournisseur || e.locataire || ""), M, 11);
+      doc.setFont("helvetica","normal"); doc.setFontSize(10);
+      const lieu = e.immeuble + (e.appart ? " — Appartement " + e.appart : "");
+      doc.text("Date : " + dateFR(e.dateISO) + "     Bien : " + lieu, M, 19);
+      const lignes = [];
+      if(e.libelle) lignes.push("Libellé : " + e.libelle);
+      lignes.push("Montant : " + euros(montantEntree(e)).replace("\u00A0"," "));
+      doc.text(lignes.join("     "), M, 26);
+      doc.setDrawColor(200,195,185);
+      doc.line(M, 31, PW-M, 31);
+      yHaut = 37;
+    }
+    const dataURL = await blobVersDataURL(ph.blob);
+    const dim = await dimensionsImage(dataURL);
+    const maxW = PW - 2*M, maxH = PH - yHaut - M;
+    const r = Math.min(maxW/dim.w, maxH/dim.h);
+    const w = dim.w*r, h = dim.h*r;
+    doc.addImage(dataURL, "JPEG", (PW-w)/2, yHaut, w, h);
+    premiere = false;
+  }
+  return doc;
+}
+
+async function pdfEntree(e, action){
+  if(!e.photoIds || !e.photoIds.length){ toast("Aucune photo pour cette écriture."); return; }
+  toast("Génération du PDF…");
+  const doc = await genererPdf(e);
+  const nom = nomPdf(e);
+  const blob = doc.output("blob");
+  const fichier = new File([blob], nom, { type:"application/pdf" });
+  if(action==="partager" && navigator.canShare && navigator.canShare({ files:[fichier] })){
+    try{ await navigator.share({ files:[fichier], title:nom }); return; }catch(err){ /* annulé */ return; }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = nom;
+  if(action==="voir") a.target = "_blank";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 30000);
+}
+
+/* ════════════════════ RÉCURRENTS ════════════════════ */
+function setTypeRec(t){
+  TYPE_REC = t;
+  document.querySelectorAll("#seg-type-rec button").forEach(b => b.classList.toggle("actif", b.dataset.type===t));
+  $("r-bloc-recette").style.display = t==="recette" ? "" : "none";
+  $("r-bloc-debit").style.display = t==="debit" ? "" : "none";
+}
+function ouvrirFormRec(rec){
+  EDIT_REC_ID = rec ? rec.id : null;
+  $("form-rec").style.display = "";
+  setTypeRec(rec ? rec.type : "recette");
+  remplirSelectImmeubles($("r-immeuble"), rec ? rec.immeuble : undefined);
+  remplirSelectApparts($("r-immeuble"), $("r-appart"), rec ? rec.appart : undefined);
+  $("r-jour").value = rec ? rec.jour : 1;
+  const d = new Date();
+  $("r-debut").value = rec ? rec.debut : d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+  $("r-locataire").value = rec ? (rec.locataire||"") : "";
+  $("r-fournisseur").value = rec ? (rec.fournisseur||"") : "";
+  $("r-loyer").value = rec ? (rec.loyer||"") : "";
+  $("r-charges").value = rec ? (rec.charges||"") : "";
+  $("r-montant").value = rec ? (rec.debit||"") : "";
+  $("r-libelle").value = rec ? (rec.libelle||"") : "";
+  $("form-rec").scrollIntoView({ behavior:"smooth" });
+}
+function fermerFormRec(){ $("form-rec").style.display = "none"; EDIT_REC_ID = null; }
+
+function enregistrerRec(){
+  const r = {
+    id: EDIT_REC_ID || uid(),
+    actif: true,
+    type: TYPE_REC,
+    jour: Math.min(31, Math.max(1, parseInt($("r-jour").value)||1)),
+    debut: $("r-debut").value,
+    immeuble: $("r-immeuble").value,
+    appart: $("r-appart").value || "",
+    locataire: $("r-locataire").value.trim(),
+    fournisseur: $("r-fournisseur").value.trim().toUpperCase(),
+    libelle: $("r-libelle").value.trim(),
+    loyer: parseFloat($("r-loyer").value)||0,
+    charges: parseFloat($("r-charges").value)||0,
+    debit: parseFloat($("r-montant").value)||0,
+    generes: []
+  };
+  if(!r.debut){ toast("Indique le premier mois."); return; }
+  if(!r.immeuble){ toast("Choisis un immeuble."); return; }
+  if(r.type==="recette" && !r.loyer && !r.charges){ toast("Indique le loyer ou les charges."); return; }
+  if(r.type==="debit" && !r.debit){ toast("Indique le montant."); return; }
+  if(EDIT_REC_ID){
+    const anc = RECS.find(x=>x.id===EDIT_REC_ID);
+    if(anc){ r.generes = anc.generes; r.actif = anc.actif; }
+    RECS = RECS.map(x => x.id===EDIT_REC_ID ? r : x);
+  } else {
+    RECS.push(r);
+  }
+  ecrireLS("fi-recs", RECS);
+  fermerFormRec();
+  rendreRecurrents();
+  majBandeauRec();
+  toast("Écriture récurrente enregistrée ✓");
+}
+
+function rendreRecurrents(){
+  const c = $("liste-recurrents");
+  if(!RECS.length){
+    c.innerHTML = "<div class='vide'><span class='gros'>🔁</span>Aucune écriture récurrente.<br>Exemple : le loyer mensuel d&rsquo;un locataire.</div>";
+    return;
+  }
+  c.innerHTML = "";
+  for(const r of RECS){
+    const d = document.createElement("div");
+    d.className = "entree";
+    const tiers = r.type==="debit" ? r.fournisseur : (r.locataire || "Loyer");
+    const montant = r.type==="debit" ? r.debit : r.loyer + r.charges;
+    d.innerHTML =
+      "<div class='corps'><div class='l1'>" + tiers + (r.actif ? "" : " <span class='badge-rec'>en pause</span>") + "</div>" +
+      "<div class='l2'>Le " + r.jour + " de chaque mois — " + r.immeuble + (r.appart ? " · " + r.appart : "") + "</div></div>" +
+      "<div class='montant " + (r.type==="debit"?"deb":"rec") + "'>" + euros(montant) + "</div>";
+    d.onclick = () => feuilleRec(r.id);
+    c.appendChild(d);
+  }
+}
+
+function feuilleRec(id){
+  const r = RECS.find(x=>x.id===id);
+  if(!r) return;
+  $("feuille-titre").textContent = (r.type==="debit" ? r.fournisseur : (r.locataire||"Loyer"));
+  $("feuille-meta").innerHTML = "Récurrent — le " + r.jour + " de chaque mois depuis " + r.debut;
+  const a = $("feuille-actions");
+  a.innerHTML = "";
+  const boutons = [
+    ["✏️ Modifier", "second", () => { fermerFeuille(); montrerVue("recurrents"); ouvrirFormRec(r); }],
+    [r.actif ? "⏸ Mettre en pause" : "▶️ Réactiver", "second", () => {
+      r.actif = !r.actif; ecrireLS("fi-recs", RECS); fermerFeuille(); rendreRecurrents(); majBandeauRec();
+    }],
+    ["🗑 Supprimer", "danger", () => {
+      if(!confirm("Supprimer cette écriture récurrente ? (Les lignes déjà générées sont conservées.)")) return;
+      RECS = RECS.filter(x=>x.id!==id); ecrireLS("fi-recs", RECS);
+      fermerFeuille(); rendreRecurrents(); majBandeauRec();
+    }]
+  ];
+  for(const [txt, cls, fn] of boutons){
+    const b = document.createElement("button");
+    b.className = "btn " + cls; b.textContent = txt; b.onclick = fn;
+    a.appendChild(b);
+  }
+  $("voile").classList.add("ouvert");
+  $("feuille").classList.add("ouverte");
+}
+
+function moisEnAttente(r){
+  if(!r.actif || !r.debut) return [];
+  const maintenant = new Date();
+  const cleNow = maintenant.getFullYear()+"-"+String(maintenant.getMonth()+1).padStart(2,"0");
+  const attente = [];
+  let [a, m] = r.debut.split("-").map(Number);
+  let cle = r.debut;
+  while(cle <= cleNow){
+    if(!r.generes.includes(cle)) attente.push(cle);
+    m++; if(m>12){ m=1; a++; }
+    cle = a+"-"+String(m).padStart(2,"0");
+  }
+  return attente;
+}
+
+function majBandeauRec(){
+  let total = 0;
+  RECS.forEach(r => total += moisEnAttente(r).length);
+  $("bandeau-rec").style.display = total ? "flex" : "none";
+  if(total) $("bandeau-rec-txt").textContent = "🔁 " + total + " échéance" + (total>1?"s":"") + " récurrente" + (total>1?"s":"") + " à générer";
+}
+
+async function genererRecurrences(){
+  let n = 0;
+  for(const r of RECS){
+    for(const cle of moisEnAttente(r)){
+      const [a, m] = cle.split("-").map(Number);
+      const dernierJour = new Date(a, m, 0).getDate();
+      const jour = Math.min(r.jour, dernierJour);
+      const e = {
+        id: uid(), recId: r.id, type: r.type,
+        dateISO: a+"-"+String(m).padStart(2,"0")+"-"+String(jour).padStart(2,"0"),
+        immeuble: r.immeuble, appart: r.appart,
+        locataire: r.locataire, fournisseur: r.fournisseur,
+        libelle: r.libelle, loyer: r.loyer, charges: r.charges, debit: r.debit,
+        photoIds: [], createdAt: Date.now()
+      };
+      await dbPut("entries", e);
+      r.generes.push(cle);
+      n++;
+    }
+  }
+  ecrireLS("fi-recs", RECS);
+  majBandeauRec();
+  toast(n + " écriture" + (n>1?"s":"") + " générée" + (n>1?"s":"") + " ✓");
+}
+
+/* ════════════════════ EXPORT ════════════════════ */
+async function rendreExport(){
+  const entrees = await dbTout("entries");
+  const annees = [...new Set(entrees.map(e=>e.dateISO.slice(0,4)))].sort().reverse();
+  const sel = $("export-annee");
+  const v = sel.value;
+  sel.innerHTML = (annees.length ? annees : [String(new Date().getFullYear())]).map(a=>"<option>"+a+"</option>").join("");
+  if([...sel.options].some(o=>o.value===v)) sel.value = v;
+}
+
+function lignesAnnee(entrees, annee){
+  return entrees
+    .filter(e => e.dateISO.startsWith(annee))
+    .sort((a,b) => a.dateISO.localeCompare(b.dateISO))
+    .map(e => {
+      const [a, m, j] = e.dateISO.split("-").map(Number);
+      return [
+        m, MOIS[m-1], new Date(a, m-1, j),
+        e.immeuble, e.appart || "", e.locataire || "", e.fournisseur || "", e.libelle || "",
+        e.loyer || null, e.charges || null, e.debit || null
+      ];
+    });
+}
+
+function classeurAnnee(entrees, annee){
+  const donnees = [COLONNES, ...lignesAnnee(entrees, annee)];
+  const ws = XLSX.utils.aoa_to_sheet(donnees, { cellDates:true });
+  // format des dates + largeurs
+  const nb = donnees.length;
+  for(let i=1; i<nb; i++){
+    const cell = ws[XLSX.utils.encode_cell({ r:i, c:2 })];
+    if(cell){ cell.z = "dd/mm/yyyy"; }
+  }
+  ws["!cols"] = [{wch:8},{wch:11},{wch:11},{wch:15},{wch:8},{wch:18},{wch:20},{wch:38},{wch:10},{wch:10},{wch:10}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "SAISIES");
+  return wb;
+}
+
+async function exporterXlsx(){
+  const annee = $("export-annee").value;
+  const entrees = await dbTout("entries");
+  if(!entrees.some(e=>e.dateISO.startsWith(annee))){ toast("Aucune écriture en " + annee + "."); return; }
+  XLSX.writeFile(classeurAnnee(entrees, annee), "COMPTA-" + annee + ".xlsx");
+  toast("Fichier COMPTA-" + annee + ".xlsx généré ✓");
+}
+
+async function exporterZip(){
+  const annee = $("export-annee").value;
+  const entrees = (await dbTout("entries")).filter(e=>e.dateISO.startsWith(annee));
+  if(!entrees.length){ toast("Aucune écriture en " + annee + "."); return; }
+  toast("Préparation du ZIP… (peut prendre un moment)");
+  const zip = new JSZip();
+  const wbData = XLSX.write(classeurAnnee(entrees, annee), { bookType:"xlsx", type:"array" });
+  zip.file("COMPTA-" + annee + ".xlsx", wbData);
+  const dossier = zip.folder("factures-" + annee);
+  const nomsPris = new Set();
+  for(const e of entrees){
+    if(!e.photoIds || !e.photoIds.length) continue;
+    const doc = await genererPdf(e);
+    let nom = nomPdf(e), base = nom, k = 2;
+    while(nomsPris.has(nom)){ nom = base.replace(/\.pdf$/, "_" + k + ".pdf"); k++; }
+    nomsPris.add(nom);
+    dossier.file(nom, doc.output("arraybuffer"));
+  }
+  const blob = await zip.generateAsync({ type:"blob" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "EXPORT-COMPTA-" + annee + ".zip";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 60000);
+  toast("ZIP généré ✓ (" + nomsPris.size + " PDF)");
+}
+
+/* ════════════════════ RÉGLAGES ════════════════════ */
+function rendreReglages(){
+  const c = $("liste-immeubles");
+  c.innerHTML = "";
+  SETTINGS.immeubles.forEach((im, idx) => {
+    const bloc = document.createElement("div");
+    bloc.style.cssText = "border:1px solid var(--ligne); border-radius:10px; padding:10px 12px; margin-bottom:8px;";
+    const titre = document.createElement("div");
+    titre.style.cssText = "display:flex; align-items:center; gap:8px;";
+    titre.innerHTML = "<strong style='flex:1'>" + im.nom + "</strong>";
+    const bx = document.createElement("button");
+    bx.className = "puce-x"; bx.textContent = "×"; bx.title = "Supprimer l\u2019immeuble";
+    bx.onclick = () => {
+      if(!confirm("Supprimer l\u2019immeuble \u00AB " + im.nom + " \u00BB de la liste ? Les écritures existantes sont conservées.")) return;
+      SETTINGS.immeubles.splice(idx,1); ecrireLS("fi-settings", SETTINGS); rendreReglages(); initSelects();
+    };
+    titre.appendChild(bx);
+    bloc.appendChild(titre);
+    const ul = document.createElement("ul");
+    ul.className = "liste-simple";
+    im.apparts.forEach((ap, j) => {
+      const li = document.createElement("li");
+      li.innerHTML = "<span class='txt'>" + ap + "</span>";
+      const b = document.createElement("button");
+      b.className = "puce-x"; b.textContent = "×";
+      b.onclick = () => { im.apparts.splice(j,1); ecrireLS("fi-settings", SETTINGS); rendreReglages(); initSelects(); };
+      li.appendChild(b);
+      ul.appendChild(li);
+    });
+    bloc.appendChild(ul);
+    const ligne = document.createElement("div");
+    ligne.className = "rangee"; ligne.style.marginTop = "8px";
+    const inp = document.createElement("input");
+    inp.type = "text"; inp.placeholder = "Nouvel appartement (ex : RDC)";
+    const badd = document.createElement("button");
+    badd.className = "btn second mini"; badd.style.flex = "0 0 auto"; badd.textContent = "＋";
+    badd.onclick = () => {
+      const v = inp.value.trim();
+      if(!v) return;
+      if(!im.apparts.includes(v)) im.apparts.push(v);
+      ecrireLS("fi-settings", SETTINGS); rendreReglages(); initSelects();
+    };
+    ligne.appendChild(inp); ligne.appendChild(badd);
+    bloc.appendChild(ligne);
+    c.appendChild(bloc);
+  });
+  afficherStockage();
+}
+
+function ajouterImmeuble(){
+  const v = $("nouvel-immeuble").value.trim().toUpperCase();
+  if(!v) return;
+  if(!SETTINGS.immeubles.some(i=>i.nom===v)) SETTINGS.immeubles.push({ nom:v, apparts:[] });
+  $("nouvel-immeuble").value = "";
+  ecrireLS("fi-settings", SETTINGS);
+  rendreReglages(); initSelects();
+}
+
+async function afficherStockage(){
+  if(navigator.storage && navigator.storage.estimate){
+    const e = await navigator.storage.estimate();
+    const mo = x => (x/1048576).toFixed(1);
+    $("info-stockage").textContent = "Stockage utilisé : " + mo(e.usage) + " Mo / " + mo(e.quota) + " Mo disponibles";
+  }
+}
+
+/* ════════════ Sauvegarde / restauration ════════════ */
+async function sauvegarder(){
+  toast("Préparation de la sauvegarde…");
+  const entrees = await dbTout("entries");
+  const photos = await dbTout("photos");
+  const photos64 = [];
+  for(const p of photos){
+    photos64.push({ id: p.id, data: await blobVersDataURL(p.blob) });
+  }
+  const dump = { version:1, date:new Date().toISOString(), settings:SETTINGS, recs:RECS, entries:entrees, photos:photos64 };
+  const blob = new Blob([JSON.stringify(dump)], { type:"application/json" });
+  const nom = "SAUVEGARDE-FACTURES-" + aujourdISO() + ".json";
+  const fichier = new File([blob], nom, { type:"application/json" });
+  if(navigator.canShare && navigator.canShare({ files:[fichier] })){
+    try{ await navigator.share({ files:[fichier], title:nom }); return; }catch(err){ /* annulé → téléchargement */ }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href=url; a.download=nom;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 30000);
+}
+
+$("input-restaure").addEventListener("change", async ev => {
+  const f = ev.target.files[0];
+  ev.target.value = "";
+  if(!f) return;
+  if(!confirm("Restaurer cette sauvegarde ? Les données actuelles seront remplacées.")) return;
+  try{
+    const dump = JSON.parse(await f.text());
+    SETTINGS = dump.settings; RECS = dump.recs || [];
+    ecrireLS("fi-settings", SETTINGS); ecrireLS("fi-recs", RECS);
+    // vider puis réécrire
+    await new Promise((res,rej)=>{ const t=DB.transaction(["entries","photos"],"readwrite"); t.objectStore("entries").clear(); t.objectStore("photos").clear(); t.oncomplete=res; t.onerror=()=>rej(t.error); });
+    for(const e of (dump.entries||[])) await dbPut("entries", e);
+    for(const p of (dump.photos||[])){
+      const rep = await fetch(p.data);
+      await dbPut("photos", { id:p.id, blob: await rep.blob() });
+    }
+    initSelects(); majBandeauRec(); majDatalists(); rendreReglages();
+    toast("Sauvegarde restaurée ✓");
+  }catch(err){
+    toast("Fichier de sauvegarde illisible.");
+  }
+});
+
+/* ════════════════════ INIT ════════════════════ */
+function initSelects(){
+  remplirSelectImmeubles($("f-immeuble"));
+  remplirSelectApparts($("f-immeuble"), $("f-appart"));
+  remplirSelectImmeubles($("r-immeuble"));
+  remplirSelectApparts($("r-immeuble"), $("r-appart"));
+}
+
+(async function init(){
+  DB = await ouvrirDB();
+  $("f-date").value = aujourdISO();
+  $("sous-titre").textContent = new Date().toLocaleDateString("fr-FR", { day:"numeric", month:"long", year:"numeric" });
+  initSelects();
+  majDatalists();
+  majBandeauRec();
+  if(navigator.storage && navigator.storage.persist) navigator.storage.persist();
+  if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+})();
+</script>
+</body>
+</html>
