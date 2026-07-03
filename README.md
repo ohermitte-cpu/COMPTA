@@ -1,7 +1,7 @@
 # Factures Immo
 
 Application mobile (PWA) de saisie des factures et loyers d'un patrimoine locatif.
-Toutes les données restent stockées sur le téléphone.
+Toutes les données restent stockées sur le téléphone. 
 
 ## Fonctionnalités
 
